@@ -1,18 +1,18 @@
 import os
 import fnmatch
 import logging
-from typing import Set, List, Iterator, TextIO, Tuple
-
-logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+import argparse
+from typing import Set, List, TextIO, Tuple
 
 DEFAULT_IGNORE_PATTERNS = {'.yallaignore', 'output.txt'}
 DEFAULT_IGNORE_FILE = '.yallaignore'
 DEFAULT_OUTPUT_FILE = 'output.txt'
 
-def read_file_lines(file_path: str) -> list[str]:
+logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+
+def read_file_lines(file_path: str) -> List[str]:
     with open(file_path, 'r', encoding='utf-8') as f:
         return f.readlines()
-
 
 def read_file_content(filepath: str) -> str:
     with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
@@ -25,7 +25,7 @@ def write_to_file(filepath: str, content: str) -> None:
 def is_valid_pattern_line(line: str) -> bool:
     return bool(line.strip() and not line.startswith('#'))
 
-def extract_patterns_from_file(file_content: list[str]) -> Set[str]:
+def extract_patterns_from_file(file_content: List[str]) -> Set[str]:
     return {line.strip() for line in file_content if is_valid_pattern_line(line)}
 
 def get_ignore_patterns(ignore_file: str = DEFAULT_IGNORE_FILE) -> Set[str]:
@@ -34,6 +34,11 @@ def get_ignore_patterns(ignore_file: str = DEFAULT_IGNORE_FILE) -> Set[str]:
         file_lines = read_file_lines(ignore_file)
         patterns.update(extract_patterns_from_file(file_lines))
     return patterns
+
+def get_gitignore_patterns() -> Set[str]:
+    if os.path.exists(".gitignore"):
+        return extract_patterns_from_file(read_file_lines(".gitignore"))
+    return set()
 
 def get_path_components(path: str) -> Tuple[str, str]:
     return os.path.basename(path), os.path.relpath(path)
@@ -54,8 +59,8 @@ def get_directory_path(root: str, dir_name: str) -> str:
 
 def filter_directories(dirs: List[str], root: str, ignore_patterns: Set[str]) -> List[str]:
     return [
-        dir_name for dir_name in dirs
-        if not should_ignore(get_directory_path(root, dir_name), ignore_patterns)
+        d for d in dirs
+        if not should_ignore(get_directory_path(root, d), ignore_patterns)
     ]
 
 def update_directories_list(dirs: List[str], filtered_dirs: List[str]) -> None:
@@ -83,11 +88,7 @@ def generate_tree_lines(directory: str, ignore_patterns: Set[str]) -> List[str]:
         update_directories_list(dirs, filtered_dirs)
         
         indent = '  ' * calculate_depth(root, directory)
-        
-        # Add directory entries
         tree_lines.extend(create_tree_entry(d, indent, True) for d in dirs)
-        
-        # Add file entries
         non_ignored_files = get_non_ignored_files(root, files, ignore_patterns)
         tree_lines.extend(create_tree_entry(f, indent) for f in non_ignored_files)
     
@@ -109,7 +110,6 @@ def process_files(outfile: TextIO, directory: str, ignore_patterns: Set[str]) ->
     for root, dirs, files in os.walk(directory):
         filtered_dirs = filter_directories(dirs, root, ignore_patterns)
         update_directories_list(dirs, filtered_dirs)
-        
         for filename in files:
             filepath = os.path.join(root, filename)
             if not should_ignore(filepath, ignore_patterns):
@@ -129,10 +129,29 @@ def process_directory_contents(output_file: str, directory: str, ignore_patterns
     except Exception as e:
         logging.error(f"Error combining files: {str(e)}")
 
+def setup_argument_parser() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description=(
+            "Yalla: create a project tree and aggregate text output of your project.\n"
+            "By default, the script reads ignore rules from '.yallaignore' (if present) and uses 'output.txt' as the output file.\n"
+            "Use -g/--gitignore to also ignore files specified in the project's .gitignore file.\n"
+            "Use -o/--output to specify a different name for the output file."
+        )
+    )
+    parser.add_argument("-g", "--gitignore", action="store_true",
+                        help="Also ignore files defined in .gitignore")
+    parser.add_argument("-o", "--output", type=str, default=DEFAULT_OUTPUT_FILE,
+                        help="Specify a different output file name (default: output.txt)")
+    return parser.parse_args()
+
 def main() -> None:
+    args = setup_argument_parser()
     current_directory = os.getcwd()
     ignore_patterns = get_ignore_patterns()
-    process_directory_contents(DEFAULT_OUTPUT_FILE, current_directory, ignore_patterns)
+    if args.gitignore:
+        ignore_patterns.update(get_gitignore_patterns())
 
+    process_directory_contents(args.output, current_directory, ignore_patterns)
+    
 if __name__ == '__main__':
     main()
