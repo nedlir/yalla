@@ -2,6 +2,7 @@ import os
 import fnmatch
 import logging
 import argparse
+import platform
 from typing import Set, List, TextIO, Tuple
 
 DEFAULT_IGNORE_PATTERNS = {'.yallaignore', 'output.txt'}
@@ -9,6 +10,21 @@ DEFAULT_IGNORE_FILE = '.yallaignore'
 DEFAULT_OUTPUT_FILE = 'output.txt'
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+
+def is_hidden(filepath: str) -> bool:
+    try:
+        name = os.path.basename(filepath)
+        
+        if platform.system() != 'Windows':
+            return name.startswith('.')
+        else:
+            try:
+                attrs = os.stat(filepath).st_file_attributes
+                return bool(attrs & 0x2)  # FILE_ATTRIBUTE_HIDDEN
+            except (AttributeError, OSError):
+                return False
+    except Exception:
+        return False
 
 def read_file_lines(file_path: str) -> List[str]:
     with open(file_path, 'r', encoding='utf-8') as f:
@@ -51,6 +67,9 @@ def matches_any_pattern(path_components: Tuple[str, str], patterns: Set[str]) ->
     )
 
 def should_ignore(path: str, patterns: Set[str]) -> bool:
+    """Check if path should be ignored based on hidden status or patterns."""
+    if is_hidden(path):
+        return True
     path_components = get_path_components(path)
     return matches_any_pattern(path_components, patterns)
 
