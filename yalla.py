@@ -59,6 +59,7 @@ def get_gitignore_patterns() -> Set[str]:
 def get_path_components(path: str) -> Tuple[str, str]:
     return os.path.basename(path), os.path.relpath(path)
 
+
 def matches_any_pattern(path_components: Tuple[str, str], patterns: Set[str]) -> bool:
     name, rel_path = path_components
     return any(
